@@ -1,35 +1,38 @@
 #!/usr/bin/python3
+import sys
+from time import sleep
 from threading import Thread
 from plyr import Query, PROVIDERS
 from gi.repository import Gtk, Gdk, GLib, GObject
 
-GLib.threads_init()
 GObject.threads_init()
 Gdk.threads_init()
 
 
 class MetadataChooser:
     def query_data(self, *args):
-        print("querying...")
         self.data = self.query.commit()
         print(self.query.error)
-        for c in self.data:
-            print(str(c.data, 'utf8'))
+        self.query_done = True
+
         Gdk.threads_enter()
         self.toggle_search()
         Gdk.threads_leave()
-        print("done")
+        sys.stdout.flush()
 
-    def query_callback(self, cache, query):
-        print("pulse")
-        Gdk.threads_enter()
-        self.progress.pulse()
-        Gdk.threads_leave()
-        return 'ok'
+    def progress_pulse(self, *args):
+        while not self.query_done:
+            Gdk.threads_enter()
+            self.progress.pulse()
+            Gdk.threads_leave()
+            sleep(0.1)
 
     def on_cancel_clicked(self, button):
-        print("cancel")
-        #self.query.cancel()
+        self.query.cancel()
+
+    def __call__(self, cache, query):
+        print(str(cache.data, 'utf8'))
+        sys.stdout.flush()
 
     def on_search_clicked(self, button):
         self.toggle_search()
@@ -45,11 +48,14 @@ class MetadataChooser:
         query.album = self.builder.get_object("e_album").get_text()
         query.title = self.builder.get_object("e_title").get_text()
         query.number = self.builder.get_object("adj_max").get_value()
-        query.callback = self.query_callback
-        query.verbosity = 0
+        query.callback = self
+        query.verbosity = 2
         self.query = query
+        self.query_done = False
+        self.progress.set_fraction(0.0)
 
         Thread(target=self.query_data).start()
+        Thread(target=self.progress_pulse).start()
 
     def on_destroy(self, *args):
         Gtk.main_quit(*args)
@@ -62,11 +68,12 @@ class MetadataChooser:
             it = self.model.get_iter(path)
             self.model[it][0] = not self.model[it][0]
 
-    def toggle_search(self):
+    def toggle_search(self, *args):
         self.search_panel.set_sensitive(not self.search_panel.get_sensitive())
         self.combobox.set_sensitive(not self.combobox.get_sensitive())
         self.provider.set_sensitive(not self.provider.get_sensitive())
         self.search_progress.set_visible(not self.search_progress.get_visible())
+        return False
 
     def get_chosen_provider(self):
         iter = self.combobox.get_active_iter()
@@ -135,7 +142,6 @@ class MetadataChooser:
 
         self.progress = self.go("pb_search")
         self.progress.set_pulse_step(0.05)
-        self.progress.pulse()
 
         self.combobox = self.go("cb_metadata_type")
         metadata_types = Gtk.ListStore(str)
