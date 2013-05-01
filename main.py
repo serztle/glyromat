@@ -1,22 +1,35 @@
 #!/usr/bin/python3
 from threading import Thread
 from plyr import Query, PROVIDERS
-from gi.repository import Gtk, GObject
+from gi.repository import Gtk, Gdk, GLib, GObject
 
+GLib.threads_init()
 GObject.threads_init()
+Gdk.threads_init()
 
 
 class MetadataChooser:
-    def query_data(self):
+    def query_data(self, *args):
+        print("querying...")
         self.data = self.query.commit()
         print(self.query.error)
         for c in self.data:
             print(str(c.data, 'utf8'))
+        Gdk.threads_enter()
         self.toggle_search()
+        Gdk.threads_leave()
+        print("done")
 
     def query_callback(self, cache, query):
+        print("pulse")
+        Gdk.threads_enter()
         self.progress.pulse()
+        Gdk.threads_leave()
         return 'ok'
+
+    def on_cancel_clicked(self, button):
+        print("cancel")
+        #self.query.cancel()
 
     def on_search_clicked(self, button):
         self.toggle_search()
@@ -32,6 +45,7 @@ class MetadataChooser:
         query.album = self.builder.get_object("e_album").get_text()
         query.title = self.builder.get_object("e_title").get_text()
         query.number = self.builder.get_object("adj_max").get_value()
+        query.callback = self.query_callback
         query.verbosity = 0
         self.query = query
 
@@ -113,11 +127,15 @@ class MetadataChooser:
         self.search_button = self.go("btn_search")
         self.search_button.connect("clicked", self.on_search_clicked)
 
+        self.cancel = self.go("btn_search_cancel")
+        self.cancel.connect("clicked", self.on_cancel_clicked)
+
         self.adjustment = self.go("adj_max")
         self.adjustment.set_value(1)
 
         self.progress = self.go("pb_search")
         self.progress.set_pulse_step(0.05)
+        self.progress.pulse()
 
         self.combobox = self.go("cb_metadata_type")
         metadata_types = Gtk.ListStore(str)
