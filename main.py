@@ -15,15 +15,17 @@ class MetadataChooser:
         self.update_provider()
 
     def on_toggle(self, cell, path, *args):
-        print(path)
         if path is not None:
             it = self.model.get_iter(path)
             self.model[it][0] = not self.model[it][0]
 
+    def on_col_clicked(self, col):
+        print("Hello")
+
     def sort_column_quality(self, model, iter1, iter2, data):
-        if model[iter1][2] == model[iter2][2]:
+        if model[iter1][data] == model[iter2][data]:
             return 0
-        elif model[iter1][2] > model[iter2][2]:
+        elif model[iter1][data] > model[iter2][data]:
             return 1
         else:
             return -1
@@ -35,7 +37,7 @@ class MetadataChooser:
             key = model[iter][0]
             details = PROVIDERS[key]
             self.model = Gtk.ListStore(bool, str, str, str)
-            self.model.set_sort_func(0, self.sort_column_quality)
+            self.model.set_sort_func(0, self.sort_column_quality, 2)
             self.model.set_sort_column_id(0, 1)
 
             for p in details['providers']:
@@ -43,25 +45,18 @@ class MetadataChooser:
             self.provider.set_model(self.model)
             self.update_entrys(details['required'])
 
+    def update_entry(self, required, key):
+        obj = self.builder.get_object("e_" + key)
+        try:
+            required.index(key)
+            obj.set_sensitive(True)
+        except ValueError:
+            obj.set_sensitive(False)
+
     def update_entrys(self, required):
-            artist = self.builder.get_object("e_artist")
-            album = self.builder.get_object("e_album")
-            title = self.builder.get_object("e_title")
-            try:
-                required.index('artist')
-                artist.set_sensitive(True)
-            except ValueError:
-                artist.set_sensitive(False)
-            try:
-                required.index('album')
-                album.set_sensitive(True)
-            except ValueError:
-                album.set_sensitive(False)
-            try:
-                required.index('title')
-                title.set_sensitive(True)
-            except ValueError:
-                title.set_sensitive(False)
+        self.update_entry(required, "artist")
+        self.update_entry(required, "album")
+        self.update_entry(required, "title")
 
     def __init__(self):
         self.builder = Gtk.Builder()
@@ -102,23 +97,25 @@ class MetadataChooser:
 
         cell = Gtk.CellRendererText()
         col = Gtk.TreeViewColumn("provider name", cell, text=1)
+        col.set_clickable(True)
+        col.connect("clicked", self.on_col_clicked)
         self.provider.append_column(col)
 
         cell = Gtk.CellRendererText()
         cell.set_fixed_size(50, -1)
         cell.set_alignment(1.0, 0.5)
         col = Gtk.TreeViewColumn("quality", cell, text=2)
+        col.set_clickable(True)
+        col.connect("clicked", self.on_col_clicked)
         self.provider.append_column(col)
 
         cell = Gtk.CellRendererText()
         cell.set_fixed_size(50, -1)
         cell.set_alignment(1.0, 0.5)
         col = Gtk.TreeViewColumn("speed", cell, text=3)
+        col.set_clickable(True)
+        col.connect("clicked", self.on_col_clicked)
         self.provider.append_column(col)
-
-        #cell = Gtk.CellRendererText()
-        #col = Gtk.TreeViewColumn("", cell, text=4)
-        #self.provider.append_column(col)
 
         self.update_provider()
 
