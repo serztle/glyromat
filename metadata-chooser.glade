@@ -42,13 +42,16 @@
                 <property name="valign">start</property>
                 <property name="margin_top">8</property>
                 <property name="border_width">6</property>
+                <child internal-child="selection">
+                  <object class="GtkTreeSelection" id="treeview-selection1"/>
+                </child>
               </object>
             </child>
             <child type="label">
               <object class="GtkLabel" id="lb_provider">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">choose provider</property>
+                <property name="label" translatable="yes">choose provider (order has no effect on processing sequence)</property>
               </object>
             </child>
           </object>
@@ -98,7 +101,7 @@
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
                 <property name="xalign">0</property>
-                <property name="label" translatable="yes">Artist: </property>
+                <property name="label" translatable="yes">Artist:</property>
                 <attributes>
                   <attribute name="weight" value="ultraheavy"/>
                 </attributes>
@@ -115,7 +118,7 @@
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
                 <property name="xalign">0</property>
-                <property name="label" translatable="yes">Album: </property>
+                <property name="label" translatable="yes">Album:</property>
                 <attributes>
                   <attribute name="weight" value="ultraheavy"/>
                 </attributes>
@@ -147,7 +150,7 @@
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
                 <property name="xalign">0</property>
-                <property name="label" translatable="yes">Title: </property>
+                <property name="label" translatable="yes">Track:</property>
                 <attributes>
                   <attribute name="weight" value="ultraheavy"/>
                 </attributes>
@@ -240,6 +243,7 @@
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="border_width">6</property>
+                <property name="rules_hint">True</property>
                 <child internal-child="selection">
                   <object class="GtkTreeSelection" id="tvs_data"/>
                 </child>

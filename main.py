@@ -1,9 +1,8 @@
 #!/usr/bin/python3
-import sys
 from time import sleep
 from threading import Thread
 from plyr import Query, PROVIDERS
-from gi.repository import Gtk, Gdk, GLib, GObject
+from gi.repository import Gtk, Gdk, GdkPixbuf, GObject
 
 GObject.threads_init()
 Gdk.threads_init()
@@ -11,16 +10,24 @@ Gdk.threads_init()
 
 class MetadataChooser:
     def query_data(self, *args):
-        self.data = self.query.commit()
-        print(self.query.error)
+        self.query.commit()
         self.query_done = True
+        print(self.query.error)
 
         Gdk.threads_enter()
         self.toggle_search()
         Gdk.threads_leave()
-        sys.stdout.flush()
 
-    def progress_pulse(self, *args):
+    def query_callback(self, cache, query):
+        if cache.is_image:
+            loader = GdkPixbuf.PixbufLoader()
+            loader.write(cache.data)
+            loader.close()
+            self.model_result.append([loader.get_pixbuf()])
+        else:
+            self.model_result.append([str(cache.data, 'utf8')])
+
+    def query_pulse(self, *args):
         while not self.query_done:
             Gdk.threads_enter()
             self.progress.pulse()
@@ -29,10 +36,6 @@ class MetadataChooser:
 
     def on_cancel_clicked(self, button):
         self.query.cancel()
-
-    def __call__(self, cache, query):
-        print(str(cache.data, 'utf8'))
-        sys.stdout.flush()
 
     def on_search_clicked(self, button):
         self.toggle_search()
@@ -48,14 +51,31 @@ class MetadataChooser:
         query.album = self.builder.get_object("e_album").get_text()
         query.title = self.builder.get_object("e_title").get_text()
         query.number = self.builder.get_object("adj_max").get_value()
-        query.callback = self
-        query.verbosity = 2
+        query.callback = self.query_callback
+        query.verbosity = 0
         self.query = query
         self.query_done = False
         self.progress.set_fraction(0.0)
 
+        self.view_results.set_headers_visible(False)
+
+        if self.col1 is not None:
+            self.view_results.remove_column(self.col1)
+        if query.get_type in ['artistphoto', 'backdrops', 'cover']:
+            self.model_result = Gtk.ListStore(GdkPixbuf.Pixbuf)
+            cell = Gtk.CellRendererPixbuf()
+            self.col1 = Gtk.TreeViewColumn("image", cell, pixbuf=0)
+        else:
+            self.model_result = Gtk.ListStore(str)
+            cell = Gtk.CellRendererPixbuf()
+            cell = Gtk.CellRendererText()
+            self.col1 = Gtk.TreeViewColumn("text", cell, text=0)
+
+        self.view_results.set_model(self.model_result)
+        self.view_results.append_column(self.col1)
+
         Thread(target=self.query_data).start()
-        Thread(target=self.progress_pulse).start()
+        Thread(target=self.query_pulse).start()
 
     def on_destroy(self, *args):
         Gtk.main_quit(*args)
@@ -119,6 +139,8 @@ class MetadataChooser:
         self.window.connect("destroy", self.on_destroy)
 
         self.view_results = self.go("tv_data")
+        self.col1 = None
+
         self.artist = self.go("e_artist")
         self.artist.set_text("DevilDriver")
 
@@ -126,7 +148,7 @@ class MetadataChooser:
         self.album.set_text("Beast")
 
         self.title = self.go("e_title")
-        self.title.set_text("Beast")
+        self.title.set_text("Dead to Rights")
 
         self.search_panel = self.go("g_search_data")
         self.search_progress = self.go("b_search")
