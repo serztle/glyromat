@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 from time import sleep
 from threading import Thread
-from plyr import Query, PROVIDERS
+from plyr import Cache, Query, PROVIDERS
 from gi.repository import Gtk, Gdk, GdkPixbuf, GObject
 
 GObject.threads_init()
@@ -13,6 +13,7 @@ class MetadataChooser:
         self.query.commit()
         self.query_done = True
         print(self.query.error)
+        print("Hello")
 
         Gdk.threads_enter()
         self.toggle_search()
@@ -23,7 +24,14 @@ class MetadataChooser:
             loader = GdkPixbuf.PixbufLoader()
             loader.write(cache.data)
             loader.close()
-            self.model_result.append([loader.get_pixbuf()])
+            pixbuf = loader.get_pixbuf()
+            info = str(pixbuf.get_width()) + "x" + str(pixbuf.get_height()) + "\n" + cache.image_format + "\n" + cache.source_url + "\n"
+            self.model_result.append([pixbuf, info])
+        elif query.get_type in ['tracklist']:
+            sec = cache.duration % 60
+            min = cache.duration / 60
+            duration = "%02d:%02d" % (min, sec)
+            self.model_result.append([str(cache.data, 'utf8'), duration])
         else:
             self.model_result.append([str(cache.data, 'utf8')])
 
@@ -59,20 +67,37 @@ class MetadataChooser:
 
         self.view_results.set_headers_visible(False)
 
-        if self.col1 is not None:
-            self.view_results.remove_column(self.col1)
+        if self.view_cols is not []:
+            for c in self.view_cols:
+                self.view_results.remove_column(c)
+            self.view_cols = []
         if query.get_type in ['artistphoto', 'backdrops', 'cover']:
-            self.model_result = Gtk.ListStore(GdkPixbuf.Pixbuf)
+            self.model_result = Gtk.ListStore(GdkPixbuf.Pixbuf, str)
             cell = Gtk.CellRendererPixbuf()
-            self.col1 = Gtk.TreeViewColumn("image", cell, pixbuf=0)
+            cell.set_alignment(0.0, 0.0)
+            self.view_cols.append(Gtk.TreeViewColumn("image", cell, pixbuf=0))
+            cell = Gtk.CellRendererText()
+            cell.set_alignment(0.5, 0.5)
+            self.view_cols.append(Gtk.TreeViewColumn("text", cell, text=1))
+        elif query.get_type in ['tracklist']:
+            self.model_result = Gtk.ListStore(str, str)
+            cell = Gtk.CellRendererText()
+            cell.set_alignment(0.0, 0.0)
+            self.view_cols.append(Gtk.TreeViewColumn("text", cell, text=0))
+            cell = Gtk.CellRendererText()
+            cell.set_alignment(0.5, 0.5)
+            self.view_cols.append(Gtk.TreeViewColumn("text", cell, text=1))
         else:
             self.model_result = Gtk.ListStore(str)
-            cell = Gtk.CellRendererPixbuf()
             cell = Gtk.CellRendererText()
-            self.col1 = Gtk.TreeViewColumn("text", cell, text=0)
+            cell.set_property("wrap_width", 500)
+            cell.set_property("wrap_mode", Gtk.WrapMode.WORD)
+            cell.set_alignment(0.0, 0.0)
+            self.view_cols.append(Gtk.TreeViewColumn("text", cell, text=0))
 
         self.view_results.set_model(self.model_result)
-        self.view_results.append_column(self.col1)
+        for c in self.view_cols:
+            self.view_results.append_column(c)
 
         Thread(target=self.query_data).start()
         Thread(target=self.query_pulse).start()
@@ -139,7 +164,7 @@ class MetadataChooser:
         self.window.connect("destroy", self.on_destroy)
 
         self.view_results = self.go("tv_data")
-        self.col1 = None
+        self.view_cols = []
 
         self.artist = self.go("e_artist")
         self.artist.set_text("DevilDriver")
@@ -173,8 +198,8 @@ class MetadataChooser:
         self.combobox.pack_start(cell, True)
         self.combobox.add_attribute(cell, 'text', 0)
         self.combobox.set_model(metadata_types)
-        self.combobox.set_entry_text_column(1)
-        self.combobox.set_active(0)
+        self.combobox.set_entry_text_column(0)
+        self.combobox.set_active(3)
         self.combobox.connect("changed", self.on_type_changed)
 
         self.provider = self.go("tv_provider")
@@ -190,7 +215,7 @@ class MetadataChooser:
 
         cell = Gtk.CellRendererText()
         cell.set_fixed_size(50, -1)
-        cell.set_alignment(1.0, 0.5)
+        cell.set_alignment(1.0, 0.0)
         col = Gtk.TreeViewColumn("quality", cell, text=2)
         col.set_sort_column_id(2)
         self.provider.append_column(col)
