@@ -3,12 +3,18 @@
   <!-- interface-requires gtk+ 3.6 -->
   <object class="GtkAdjustment" id="adj_max">
     <property name="upper">100</property>
+    <property name="value">1</property>
     <property name="step_increment">1</property>
     <property name="page_increment">10</property>
   </object>
+  <object class="GtkImage" id="icon_search">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="stock">gtk-find</property>
+  </object>
   <object class="GtkWindow" id="wd_metadata_chooser">
     <property name="can_focus">False</property>
-    <property name="border_width">6</property>
+    <property name="border_width">5</property>
     <property name="title" translatable="yes">Metadata chooser</property>
     <property name="default_width">600</property>
     <property name="default_height">600</property>
@@ -22,6 +28,8 @@
             <property name="height_request">32</property>
             <property name="visible">True</property>
             <property name="can_focus">False</property>
+            <property name="active">3</property>
+            <property name="entry_text_column">0</property>
           </object>
           <packing>
             <property name="expand">False</property>
@@ -51,7 +59,8 @@
               <object class="GtkLabel" id="lb_provider">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">choose provider (order has no effect on processing sequence)</property>
+                <property name="label" translatable="yes">Used Providers &lt;small&gt;(order has no effect on processing sequence)&lt;/small&gt;</property>
+                <property name="use_markup">True</property>
               </object>
             </child>
           </object>
@@ -67,16 +76,17 @@
             <property name="can_focus">False</property>
             <property name="margin_top">6</property>
             <property name="margin_bottom">9</property>
+            <property name="row_spacing">3</property>
+            <property name="column_spacing">5</property>
             <child>
               <object class="GtkEntry" id="e_artist">
-                <property name="height_request">32</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="opacity">0.98999999999999999</property>
                 <property name="invisible_char">●</property>
               </object>
               <packing>
-                <property name="left_attach">1</property>
+                <property name="left_attach">2</property>
                 <property name="top_attach">0</property>
                 <property name="width">1</property>
                 <property name="height">1</property>
@@ -84,13 +94,12 @@
             </child>
             <child>
               <object class="GtkEntry" id="e_album">
-                <property name="height_request">32</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="invisible_char">●</property>
               </object>
               <packing>
-                <property name="left_attach">1</property>
+                <property name="left_attach">2</property>
                 <property name="top_attach">1</property>
                 <property name="width">1</property>
                 <property name="height">1</property>
@@ -107,7 +116,7 @@
                 </attributes>
               </object>
               <packing>
-                <property name="left_attach">0</property>
+                <property name="left_attach">1</property>
                 <property name="top_attach">0</property>
                 <property name="width">1</property>
                 <property name="height">1</property>
@@ -124,7 +133,7 @@
                 </attributes>
               </object>
               <packing>
-                <property name="left_attach">0</property>
+                <property name="left_attach">1</property>
                 <property name="top_attach">1</property>
                 <property name="width">1</property>
                 <property name="height">1</property>
@@ -132,14 +141,13 @@
             </child>
             <child>
               <object class="GtkEntry" id="e_title">
-                <property name="height_request">32</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="hexpand">True</property>
                 <property name="invisible_char">●</property>
               </object>
               <packing>
-                <property name="left_attach">1</property>
+                <property name="left_attach">2</property>
                 <property name="top_attach">2</property>
                 <property name="width">1</property>
                 <property name="height">1</property>
@@ -156,7 +164,7 @@
                 </attributes>
               </object>
               <packing>
-                <property name="left_attach">0</property>
+                <property name="left_attach">1</property>
                 <property name="top_attach">2</property>
                 <property name="width">1</property>
                 <property name="height">1</property>
@@ -170,39 +178,12 @@
                 <property name="can_focus">True</property>
                 <property name="receives_default">True</property>
                 <property name="valign">start</property>
-              </object>
-              <packing>
-                <property name="left_attach">1</property>
-                <property name="top_attach">4</property>
-                <property name="width">1</property>
-                <property name="height">1</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkFixed" id="f_dummy">
-                <property name="visible">True</property>
-                <property name="can_focus">False</property>
-                <property name="valign">start</property>
+                <property name="image">icon_search</property>
               </object>
               <packing>
                 <property name="left_attach">0</property>
                 <property name="top_attach">4</property>
-                <property name="width">1</property>
-                <property name="height">1</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkScale" id="sc_max">
-                <property name="visible">True</property>
-                <property name="can_focus">True</property>
-                <property name="adjustment">adj_max</property>
-                <property name="round_digits">0</property>
-                <property name="digits">0</property>
-              </object>
-              <packing>
-                <property name="left_attach">1</property>
-                <property name="top_attach">3</property>
-                <property name="width">1</property>
+                <property name="width">3</property>
                 <property name="height">1</property>
               </packing>
             </child>
@@ -212,13 +193,82 @@
                 <property name="can_focus">False</property>
                 <property name="margin_right">6</property>
                 <property name="xalign">0</property>
-                <property name="label" translatable="yes">Max:</property>
+                <property name="label" translatable="yes">Items:</property>
                 <attributes>
                   <attribute name="weight" value="ultraheavy"/>
                 </attributes>
               </object>
               <packing>
+                <property name="left_attach">1</property>
+                <property name="top_attach">3</property>
+                <property name="width">1</property>
+                <property name="height">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkImage" id="icon_artist">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="icon_name">preferences-desktop-accessibility</property>
+              </object>
+              <packing>
                 <property name="left_attach">0</property>
+                <property name="top_attach">0</property>
+                <property name="width">1</property>
+                <property name="height">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkImage" id="icon_album">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="icon_name">media-optical</property>
+              </object>
+              <packing>
+                <property name="left_attach">0</property>
+                <property name="top_attach">1</property>
+                <property name="width">1</property>
+                <property name="height">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkImage" id="icon_title">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="icon_name">audio-x-generic</property>
+              </object>
+              <packing>
+                <property name="left_attach">0</property>
+                <property name="top_attach">2</property>
+                <property name="width">1</property>
+                <property name="height">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkImage" id="icon_number">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="icon_name">emblem-downloads</property>
+              </object>
+              <packing>
+                <property name="left_attach">0</property>
+                <property name="top_attach">3</property>
+                <property name="width">1</property>
+                <property name="height">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkScale" id="sc_max">
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="adjustment">adj_max</property>
+                <property name="fill_level">100</property>
+                <property name="round_digits">0</property>
+                <property name="digits">0</property>
+                <property name="value_pos">right</property>
+              </object>
+              <packing>
+                <property name="left_attach">2</property>
                 <property name="top_attach">3</property>
                 <property name="width">1</property>
                 <property name="height">1</property>
@@ -242,6 +292,7 @@
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="border_width">6</property>
+                <property name="headers_visible">False</property>
                 <property name="rules_hint">True</property>
                 <child internal-child="selection">
                   <object class="GtkTreeSelection" id="tvs_data"/>
@@ -258,12 +309,13 @@
         <child>
           <object class="GtkBox" id="b_search">
             <property name="can_focus">False</property>
+            <property name="spacing">2</property>
             <child>
               <object class="GtkProgressBar" id="pb_search">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
                 <property name="hexpand">True</property>
-                <property name="pulse_step">0</property>
+                <property name="pulse_step">0.050000000000000003</property>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -274,7 +326,6 @@
             <child>
               <object class="GtkButton" id="btn_search_cancel">
                 <property name="label" translatable="yes">Cancel search...</property>
-                <property name="height_request">32</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="receives_default">True</property>
@@ -289,6 +340,7 @@
           <packing>
             <property name="expand">False</property>
             <property name="fill">True</property>
+            <property name="padding">2</property>
             <property name="position">5</property>
           </packing>
         </child>
