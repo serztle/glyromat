@@ -325,10 +325,11 @@
             </child>
             <child>
               <object class="GtkButton" id="btn_search_cancel">
-                <property name="label" translatable="yes">Cancel search...</property>
+                <property name="label">gtk-quit</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
               </object>
               <packing>
                 <property name="expand">False</property>

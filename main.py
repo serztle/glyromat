@@ -10,15 +10,109 @@ Gdk.threads_init()
 
 db = Database('/tmp')
 
-IMG_INFO_TEMPLATE = '''{w}x{h}
-{img_format}
-{source_url}
+IMG_INFO_TEMPLATE = '''
+<tt><b>Image Size:</b>   </tt>{w}x{h}
+<tt><b>Image Format:</b> </tt>{img_format}
+<tt><b>Image Source:</b> </tt>{source_url}
 '''
 
 TEXT_TEMPLATE = '''{text}
 
 <b>Source:</b> {source_url}
 '''
+
+
+def show_full_image(pixbuf):
+    image = Gtk.Image.new_from_pixbuf(pixbuf)
+
+    scw = Gtk.ScrolledWindow()
+    scw.add(image)
+
+    win = Gtk.Window(Gtk.WindowType.TOPLEVEL)
+    win.set_decorated(False)
+    win.add(scw)
+    win.show_all()
+
+
+class ImageCellRenderer(Gtk.CellRenderer):
+    pixbuf = GObject.property(type=GdkPixbuf.Pixbuf)
+    markup = GObject.property(type=str, default='')
+
+    def __init__(self, th_width=200, th_height=200, padding=2, border=5):
+        Gtk.CellRenderer.__init__(self)
+        self._text_renderer = Gtk.CellRendererText()
+
+        self.th_width = th_width
+        self.th_height = th_height
+        self.padding = padding
+        self.border = border
+
+    def do_render(self, ctx, widget, background_area, cell_area, flags):
+        th_width, th_height = self.th_width, self.th_height
+        padding, border = self.padding, self.border
+
+        def aspect_scale(width, height, dest):
+            fac = float(dest) / max(width, height)
+            return fac * width, fac * height
+
+        asp_width, asp_height = aspect_scale(
+                self.pixbuf.get_width(),
+                self.pixbuf.get_height(),
+                th_width
+        )
+
+        center_border_y = padding + cell_area.y + (th_height - asp_height) / 2
+
+        ctx.set_source_rgb(0, 0, 0)
+        ctx.rectangle(
+                padding + cell_area.x,
+                center_border_y,
+                asp_width + border - padding,
+                asp_height + 2 * border - padding
+        )
+        ctx.fill()
+
+        img_off = padding + border
+        thumbnail = self.pixbuf.scale_simple(
+                asp_width, asp_height,
+                GdkPixbuf.InterpType.HYPER
+        )
+
+        center_img_y = img_off + cell_area.y + (th_height - asp_height) / 2
+
+        Gdk.cairo_set_source_pixbuf(ctx, thumbnail, cell_area.x, center_img_y)
+        ctx.rectangle(
+                img_off + cell_area.x,
+                center_img_y,
+                asp_width,
+                asp_height
+        )
+        ctx.fill()
+
+        label_off = th_width + padding + 2 * border + 10
+        label_rect = Gdk.Rectangle()
+        label_rect.x = label_off + cell_area.x
+        label_rect.y = cell_area.y
+        label_rect.width = cell_area.width - label_off
+        label_rect.height = cell_area.height
+
+        self._text_renderer.set_property('markup', self.markup)
+        self._text_renderer.render(ctx, widget, background_area, label_rect, flags)
+
+    def do_get_size(self, widget, cell_area):
+        height = self.th_height + self.border + 2 * self.padding
+        width = widget.get_allocation().width
+        return (0, 0, width, height)
+
+    def frag(self, x, y):
+        height = self.th_height + self.border + 2 * self.padding
+        width = self.th_width + self.border + 2 * self.padding
+        mod = y % height
+
+        if self.padding <= mod <= height - self.padding:
+            if self.padding <= x <= width - self.padding:
+                return int(y / height)
+        return -1
 
 
 class MetadataChooser:
@@ -62,6 +156,16 @@ class MetadataChooser:
             Gdk.threads_leave()
             sleep(0.1)
 
+    def on_tree_mouse_enter(self, widget, event):
+        if self.model_result is None:
+            return
+
+        frag_idx = self.image_renderer.frag(event.x, event.y)
+        if 0 <= frag_idx < len(self.model_result):
+            pixbuf = self.model_result[frag_idx][0]
+            if isinstance(pixbuf, GdkPixbuf.Pixbuf):
+                show_full_image(pixbuf)
+
     def on_cancel_clicked(self, button):
         self.query.cancel()
 
@@ -92,17 +196,14 @@ class MetadataChooser:
 
             for idx, cell in enumerate(cells):
                 cell.set_alignment(idx / 2.0, idx / 2.0)
-                if isinstance(cell, Gtk.CellRendererPixbuf):
-                    col = Gtk.TreeViewColumn(' ', cell, pixbuf=idx)
-                else:
-                    col = Gtk.TreeViewColumn(' ', cell, markup=idx)
+                col = Gtk.TreeViewColumn(' ', cell, markup=idx)
                 self.view_results.append_column(col)
 
         if query.get_type in ['artistphoto', 'backdrops', 'cover']:
-            _create_model(
-                    (GdkPixbuf.Pixbuf, str),
-                    [Gtk.CellRendererPixbuf(), Gtk.CellRendererText()]
-            )
+            self.model_result = Gtk.ListStore(GdkPixbuf.Pixbuf, str)
+            self.view_results.set_model(self.model_result)
+            col = Gtk.TreeViewColumn(' ', self.image_renderer, pixbuf=0, markup=1)
+            self.view_results.append_column(col)
         elif query.get_type in ['tracklist']:
             cell = Gtk.CellRendererText()
             cell.set_property('editable', True)
@@ -188,7 +289,10 @@ class MetadataChooser:
         self.window = go('wd_metadata_chooser')
         self.window.connect('destroy', self.on_destroy)
 
+        self.image_renderer = ImageCellRenderer()
+        self.model_result = None
         self.view_results = go('tv_data')
+        self.view_results.connect('button-press-event', self.on_tree_mouse_enter)
 
         self.artist = go('e_artist')
         self.artist.set_text('DevilDriver')
