@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 from time import sleep
+from math import pi
 from threading import Thread
 from subprocess import Popen
 from tempfile import mkstemp
@@ -27,6 +28,8 @@ class MetadataChooser:
 
         Gdk.threads_enter()
         self.toggle_search_sensivity()
+        if len(self.results) is 0:
+            self.show_no_results_sign()
         Gdk.threads_leave()
 
     def query_callback(self, cache, query):
@@ -39,6 +42,7 @@ class MetadataChooser:
             else:
                 template = self.create_template_text(cache)
 
+            self.show_results()
             self.content_box.pack_start(template, False, False, 1)
         finally:
             Gdk.threads_leave()
@@ -286,6 +290,41 @@ class MetadataChooser:
             'image-viewer': 'sxiv %s'
         }
 
+    def show_no_results_sign(self):
+        def _render(widget, ctx):
+            alloc = widget.get_allocation()
+            w, h = alloc.width, alloc.height
+
+            ctx.set_source_rgb(0.8, 0.8, 0.8)
+            ctx.set_line_width(w / 64)
+            ctx.arc(w / 2, h / 2, w / 5, 0, 2 * pi)
+            ctx.stroke()
+
+            text = '×'
+            ctx.set_font_size(w / 4)
+            extents = ctx.text_extents(text)
+            ctx.move_to(w / 2 - extents[4] / 2, h / 2 + extents[3] / 2)
+            ctx.show_text(text)
+
+        da = Gtk.DrawingArea()
+        da.connect('draw', _render)
+
+        swd = self.builder.get_object('swd_result')
+        if swd.get_child() is not None:
+            swd.remove(swd.get_child())
+            swd.add(da)
+            swd.show_all()
+
+    def show_results(self):
+        swd = self.builder.get_object('swd_result')
+        rvp = self.builder.get_object('vp_result')
+
+        child = swd.get_child()
+        if  child is not None and child is not rvp:
+            swd.remove(swd.get_child())
+            swd.add(rvp)
+            swd.show_all()
+
     def set_setting(self, key, value):
         self.settings[key] = value
 
@@ -297,6 +336,8 @@ class MetadataChooser:
         self.builder = Gtk.Builder()
         self.builder.add_from_file('metadata-chooser.glade')
         go = self.builder.get_object
+
+        self.show_no_results_sign()
 
         self.window = go('wd_metadata_chooser')
         self.window.connect('destroy', self.on_destroy)
