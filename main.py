@@ -1,14 +1,13 @@
 #!/usr/bin/python3
 from time import sleep
 from threading import Thread
+from subprocess import Popen
+from tempfile import mkstemp
 from plyr import Cache, Query, Database, PROVIDERS
 from gi.repository import Gtk, Gdk, GdkPixbuf, GObject
 
 GObject.threads_init()
 Gdk.threads_init()
-
-
-db = Database('/tmp')
 
 
 IMAGE_DESCRIPTION = '''
@@ -23,7 +22,7 @@ IMAGE_DESCRIPTION = '''
 
 class MetadataChooser:
     def query_data(self, *args):
-        self.query.commit()
+        self.results = self.query.commit()
         self.query_done = True
 
         Gdk.threads_enter()
@@ -40,7 +39,7 @@ class MetadataChooser:
             else:
                 template = self.create_template_text(cache)
 
-            self.content_box.pack_start(template, False, True, 1)
+            self.content_box.pack_start(template, False, False, 1)
         finally:
             Gdk.threads_leave()
 
@@ -65,9 +64,19 @@ class MetadataChooser:
         query.title = self.entry_title.get_text()
         query.number = self.adj_max.get_value()
         query.callback = self.query_callback
-        query.database = db
+        query.database = self.db
         query.verbosity = 0
+        query.db_autowrite = False
 
+        query.force_utf8 = self.settings['force-utf8']
+        query.language = self.settings['language']
+        query.language_aware_only = self.settings['only-lang']
+        query.img_size = (self.settings['min-size'], self.settings['max-size'])
+
+        query.qsratio = self.settings['qsratio']
+        query.max_per_plugins = self.settings['plugmax']
+
+        self.results = []
         self.query = query
         self.query_done = False
         self.progress.set_fraction(0.0)
@@ -175,6 +184,10 @@ class MetadataChooser:
         self.update_entry(required, 'album')
         self.update_entry(required, 'title')
 
+    def result_set(self, widget, cache):
+        self.db.insert(self.query, cache)
+        widget.set_sensitive(False)
+
     def create_template_image(self, cache):
         builder = Gtk.Builder()
         builder.add_from_file('template_image.glade')
@@ -189,6 +202,18 @@ class MetadataChooser:
         loader.close()
         pixbuf = loader.get_pixbuf()
 
+        def show_in_image_viewer(widget, event, pixbuf):
+            file_id, path = mkstemp(suffix='png')
+            pixbuf.savev(path, 'png', [], [])
+
+            try:
+                Popen(self.settings['image-viewer'] % path,  shell=True)
+            except TypeError:
+                pass
+
+        event_box = go('image_eventbox')
+        event_box.connect('button-press-event', show_in_image_viewer, pixbuf)
+
         da.connect('draw', self.on_draw_image, pixbuf)
 
         lb_descr.set_markup(IMAGE_DESCRIPTION.format(
@@ -199,6 +224,10 @@ class MetadataChooser:
 
         lb_source.set_label(cache.source_url)
         lb_source.set_uri(cache.source_url)
+
+        btn_set = go('btn_set')
+        btn_set.set_sensitive(not cache.is_cached)
+        btn_set.connect('clicked', self.result_set, cache)
 
         return go('template_image')
 
@@ -219,6 +248,10 @@ class MetadataChooser:
         text_buf.set_text(str(cache.data, 'utf-8'))
         text_field.set_buffer(text_buf)
 
+        btn_set = go('btn_set')
+        btn_set.set_sensitive(not cache.is_cached)
+        btn_set.connect('clicked', self.result_set, cache)
+
         return go('template_text')
 
     def create_template_list(self, cache):
@@ -237,7 +270,30 @@ class MetadataChooser:
 
         return go('template_track')
 
+    ########i###################################################################
+    #                           Setttings Callbacks                           #
+    ###########################################################################
+
+    def set_default_settings(self):
+        self.settings = {
+            'force-utf8': False,
+            'language': 'en',
+            'only-lang': False,
+            'min-size': -1,
+            'max-size': -1,
+            'qsratio': 0.9,
+            'plugmax': -1,
+            'image-viewer': 'sxiv %s'
+        }
+
+    def set_setting(self, key, value):
+        self.settings[key] = value
+
     def __init__(self):
+        self.db = Database('/tmp')
+
+        self.set_default_settings()
+
         self.builder = Gtk.Builder()
         self.builder.add_from_file('metadata-chooser.glade')
         go = self.builder.get_object
@@ -274,6 +330,35 @@ class MetadataChooser:
         self.entry_title = go('e_title')
         self.adj_max = go('adj_max')
 
+        ##############
+        #  Settings  #
+        ##############
+
+        go('forceutf8_switch').connect('button-press-event',
+                lambda sw, ev: self.set_setting('force-utf8', not sw.get_active())
+        )
+        go('only_lang_switch').connect('button-press-event',
+                lambda sw, ev: self.set_setting('only-lang', not sw.get_active())
+        )
+        go('lang_combobox').connect('changed',
+                lambda co: self.set_setting('language', co.get_model()[co.get_active()][0])
+        )
+        go('minsize_spin').connect('changed',
+                lambda spin: self.set_setting('min-size', int(spin.get_value()))
+        )
+        go('maxsize_spin').connect('changed',
+                lambda spin: self.set_setting('max-size', int(spin.get_value()))
+        )
+        go('image_viewer_entry').connect('activate',
+                lambda ent: self.set_setting('image-viewer', ent.get_text())
+        )
+        go('qsratio_scale').connect('value-changed',
+                lambda sc: self.set_setting('qsratio', sc.get_value())
+        )
+        go('plugmax_scale').connect('value-changed',
+                lambda sc: self.set_setting('plugmax', int(sc.get_value()))
+        )
+
         self.combobox = go('cb_metadata_type')
         metadata_types = Gtk.ListStore(str, str)
         for p in sorted(PROVIDERS.keys()):
@@ -304,12 +389,14 @@ class MetadataChooser:
 
         self.provider = go('tv_provider')
 
+        self.results = []
+
         cell = Gtk.CellRendererToggle()
         cell.connect('toggled', self.on_toggle, None)
         col = Gtk.TreeViewColumn('Active', cell, active=0)
         self.provider.append_column(col)
 
-        for idx, name in enumerate(['Provider', 'Quality', 'Speed', ''], start=1):
+        for idx, name in enumerate(['Provider', 'Quality', 'Speed'], start=1):
             cell = Gtk.CellRendererText()
             col = Gtk.TreeViewColumn(name, cell, text=idx)
             col.set_sort_column_id(idx)
