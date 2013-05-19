@@ -10,109 +10,15 @@ Gdk.threads_init()
 
 db = Database('/tmp')
 
-IMG_INFO_TEMPLATE = '''
-<tt><b>Image Size:</b>   </tt>{w}x{h}
-<tt><b>Image Format:</b> </tt>{img_format}
-<tt><b>Image Source:</b> </tt>{source_url}
+
+IMAGE_DESCRIPTION = '''
+<tt>Image-Size:    </tt>   {size}
+<tt>Image-Format:  </tt>   {image_format}
+<tt>Image-Provider:</tt>   {provider}
+
+
+<b>Source-URL:</b>
 '''
-
-TEXT_TEMPLATE = '''{text}
-
-<b>Source:</b> {source_url}
-'''
-
-
-def show_full_image(pixbuf):
-    image = Gtk.Image.new_from_pixbuf(pixbuf)
-
-    scw = Gtk.ScrolledWindow()
-    scw.add(image)
-
-    win = Gtk.Window(Gtk.WindowType.TOPLEVEL)
-    win.set_decorated(False)
-    win.add(scw)
-    win.show_all()
-
-
-class ImageCellRenderer(Gtk.CellRenderer):
-    pixbuf = GObject.property(type=GdkPixbuf.Pixbuf)
-    markup = GObject.property(type=str, default='')
-
-    def __init__(self, th_width=200, th_height=200, padding=2, border=5):
-        Gtk.CellRenderer.__init__(self)
-        self._text_renderer = Gtk.CellRendererText()
-
-        self.th_width = th_width
-        self.th_height = th_height
-        self.padding = padding
-        self.border = border
-
-    def do_render(self, ctx, widget, background_area, cell_area, flags):
-        th_width, th_height = self.th_width, self.th_height
-        padding, border = self.padding, self.border
-
-        def aspect_scale(width, height, dest):
-            fac = float(dest) / max(width, height)
-            return fac * width, fac * height
-
-        asp_width, asp_height = aspect_scale(
-                self.pixbuf.get_width(),
-                self.pixbuf.get_height(),
-                th_width
-        )
-
-        center_border_y = padding + cell_area.y + (th_height - asp_height) / 2
-
-        ctx.set_source_rgb(0, 0, 0)
-        ctx.rectangle(
-                padding + cell_area.x,
-                center_border_y,
-                asp_width + border - padding,
-                asp_height + 2 * border - padding
-        )
-        ctx.fill()
-
-        img_off = padding + border
-        thumbnail = self.pixbuf.scale_simple(
-                asp_width, asp_height,
-                GdkPixbuf.InterpType.HYPER
-        )
-
-        center_img_y = img_off + cell_area.y + (th_height - asp_height) / 2
-
-        Gdk.cairo_set_source_pixbuf(ctx, thumbnail, cell_area.x, center_img_y)
-        ctx.rectangle(
-                img_off + cell_area.x,
-                center_img_y,
-                asp_width,
-                asp_height
-        )
-        ctx.fill()
-
-        label_off = th_width + padding + 2 * border + 10
-        label_rect = Gdk.Rectangle()
-        label_rect.x = label_off + cell_area.x
-        label_rect.y = cell_area.y
-        label_rect.width = cell_area.width - label_off
-        label_rect.height = cell_area.height
-
-        self._text_renderer.set_property('markup', self.markup)
-        self._text_renderer.render(ctx, widget, background_area, label_rect, flags)
-
-    def do_get_size(self, widget, cell_area):
-        height = self.th_height + self.border + 2 * self.padding
-        width = widget.get_allocation().width
-        return (0, 0, width, height)
-
-    def frag(self, x, y):
-        height = self.th_height + self.border + 2 * self.padding
-        width = self.th_width + self.border + 2 * self.padding
-        mod = y % height
-
-        if self.padding <= mod <= height - self.padding:
-            if self.padding <= x <= width - self.padding:
-                return int(y / height)
-        return -1
 
 
 class MetadataChooser:
@@ -125,29 +31,18 @@ class MetadataChooser:
         Gdk.threads_leave()
 
     def query_callback(self, cache, query):
-        if cache.is_image:
-            loader = GdkPixbuf.PixbufLoader()
-            loader.write(cache.data)
-            loader.close()
-            pixbuf = loader.get_pixbuf()
+        Gdk.threads_enter()
+        try:
+            if cache.is_image:
+                template = self.create_template_image(cache)
+            elif query.get_type in ['tracklist']:
+                template = self.create_template_list(cache)
+            else:
+                template = self.create_template_text(cache)
 
-            info = IMG_INFO_TEMPLATE.format(
-                    w=pixbuf.get_width(),
-                    h=pixbuf.get_height(),
-                    img_format=cache.image_format,
-                    source_url=cache.source_url
-            )
-
-            self.model_result.append([pixbuf, info])
-        elif query.get_type in ['tracklist']:
-            duration = '%02d:%02d' % (cache.duration / 60, cache.duration % 60)
-            self.model_result.append([str(cache.data, 'utf8'), duration])
-        else:
-            text = TEXT_TEMPLATE.format(
-                    text=str(cache.data, 'utf8'),
-                    source_url=cache.source_url
-            )
-            self.model_result.append([text])
+            self.content_box.pack_start(template, False, True, 1)
+        finally:
+            Gdk.threads_leave()
 
     def query_pulse(self, *args):
         while not self.query_done:
@@ -155,16 +50,6 @@ class MetadataChooser:
             self.progress.pulse()
             Gdk.threads_leave()
             sleep(0.1)
-
-    def on_tree_mouse_enter(self, widget, event):
-        if self.model_result is None:
-            return
-
-        frag_idx = self.image_renderer.frag(event.x, event.y)
-        if 0 <= frag_idx < len(self.model_result):
-            pixbuf = self.model_result[frag_idx][0]
-            if isinstance(pixbuf, GdkPixbuf.Pixbuf):
-                show_full_image(pixbuf)
 
     def on_cancel_clicked(self, button):
         self.query.cancel()
@@ -187,35 +72,8 @@ class MetadataChooser:
         self.query_done = False
         self.progress.set_fraction(0.0)
 
-        for col in self.view_results.get_columns():
-            self.view_results.remove_column(col)
-
-        def _create_model(data, cells):
-            self.model_result = Gtk.ListStore(*data)
-            self.view_results.set_model(self.model_result)
-
-            for idx, cell in enumerate(cells):
-                cell.set_alignment(idx / 2.0, idx / 2.0)
-                col = Gtk.TreeViewColumn(' ', cell, markup=idx)
-                self.view_results.append_column(col)
-
-        if query.get_type in ['artistphoto', 'backdrops', 'cover']:
-            self.model_result = Gtk.ListStore(GdkPixbuf.Pixbuf, str)
-            self.view_results.set_model(self.model_result)
-            col = Gtk.TreeViewColumn(' ', self.image_renderer, pixbuf=0, markup=1)
-            self.view_results.append_column(col)
-        elif query.get_type in ['tracklist']:
-            cell = Gtk.CellRendererText()
-            cell.set_property('editable', True)
-            _create_model(
-                    (str, str),
-                    [cell, Gtk.CellRendererText()]
-            )
-        else:
-            cell = Gtk.CellRendererText()
-            cell.set_property('wrap_width', 500)
-            cell.set_property('wrap_mode', Gtk.WrapMode.WORD)
-            _create_model([str], [cell])
+        for widget in self.content_box.get_children():
+            self.content_box.remove(widget)
 
         Thread(target=self.query_data).start()
         Thread(target=self.query_pulse).start()
@@ -230,6 +88,42 @@ class MetadataChooser:
         if path is not None:
             it = self.model.get_iter(path)
             self.model[it][0] = not self.model[it][0]
+
+    def on_draw_image(self, widget, ctx, pixbuf):
+        alloc = widget.get_allocation()
+        width, height = pixbuf.get_width(), pixbuf.get_height()
+        fac = float(alloc.width) / max(width, height)
+        asp_width, asp_height = fac * width, fac * height
+
+        border = 5
+
+        center_rect = int((alloc.height - asp_height) / 2)
+
+        ctx.set_source_rgb(0, 0, 0)
+        ctx.rectangle(
+                0,
+                center_rect,
+                asp_width,
+                asp_height
+        )
+        ctx.fill()
+
+        asp_width -= 2 * border
+        asp_height -= 2 * border
+
+        thumbnail = pixbuf.scale_simple(
+                asp_width, asp_height,
+                GdkPixbuf.InterpType.HYPER
+        )
+
+        Gdk.cairo_set_source_pixbuf(ctx, thumbnail, border, center_rect + border)
+        ctx.rectangle(
+                border,
+                center_rect + border,
+                asp_width,
+                asp_height
+        )
+        ctx.fill()
 
     def toggle_search_sensivity(self, *args):
         self.search_panel.set_sensitive(not self.search_panel.get_sensitive())
@@ -281,6 +175,68 @@ class MetadataChooser:
         self.update_entry(required, 'album')
         self.update_entry(required, 'title')
 
+    def create_template_image(self, cache):
+        builder = Gtk.Builder()
+        builder.add_from_file('template_image.glade')
+        go = builder.get_object
+        da = go('da')
+
+        lb_descr = go('lb_descr')
+        lb_source = go('lb_source')
+
+        loader = GdkPixbuf.PixbufLoader()
+        loader.write(cache.data)
+        loader.close()
+        pixbuf = loader.get_pixbuf()
+
+        da.connect('draw', self.on_draw_image, pixbuf)
+
+        lb_descr.set_markup(IMAGE_DESCRIPTION.format(
+            size='{0}x{1}'.format(pixbuf.get_width(), pixbuf.get_height()),
+            image_format=cache.image_format,
+            provider=cache.provider
+        ))
+
+        lb_source.set_label(cache.source_url)
+        lb_source.set_uri(cache.source_url)
+
+        return go('template_image')
+
+    def create_template_text(self, cache):
+        builder = Gtk.Builder()
+        builder.add_from_file('template_text.glade')
+        go = builder.get_object
+
+        lb_provider = go('lb_provider')
+        lb_source = go('lb_source')
+        text_field = go('tev_text')
+
+        lb_provider.set_text(cache.provider)
+        lb_source.set_label(cache.source_url)
+        lb_source.set_uri(cache.source_url)
+
+        text_buf = Gtk.TextBuffer()
+        text_buf.set_text(str(cache.data, 'utf-8'))
+        text_field.set_buffer(text_buf)
+
+        return go('template_text')
+
+    def create_template_list(self, cache):
+        builder = Gtk.Builder()
+        builder.add_from_file('template_track.glade')
+        go = builder.get_object
+
+        lb_track = go('lb_track')
+        lb_duration = go('lb_duration')
+
+        lb_track.set_text(str(cache.data, 'utf-8'))
+        lb_duration.set_text('{0:02}:{1:02}'.format(
+            int(cache.duration / 60),
+            cache.duration % 60)
+        )
+
+        return go('template_track')
+
     def __init__(self):
         self.builder = Gtk.Builder()
         self.builder.add_from_file('metadata-chooser.glade')
@@ -289,10 +245,7 @@ class MetadataChooser:
         self.window = go('wd_metadata_chooser')
         self.window.connect('destroy', self.on_destroy)
 
-        self.image_renderer = ImageCellRenderer()
-        self.model_result = None
-        self.view_results = go('tv_data')
-        self.view_results.connect('button-press-event', self.on_tree_mouse_enter)
+        self.content_box = go('b_result')
 
         self.artist = go('e_artist')
         self.artist.set_text('DevilDriver')
