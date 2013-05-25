@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 from time import sleep
 from math import pi
 from threading import Thread
@@ -6,6 +5,8 @@ from subprocess import Popen
 from tempfile import mkstemp
 from plyr import Cache, Query, Database, PROVIDERS
 from gi.repository import Gtk, Gdk, GdkPixbuf, GObject
+
+import os
 
 GObject.threads_init()
 Gdk.threads_init()
@@ -20,8 +21,36 @@ IMAGE_DESCRIPTION = '''
 <b>Source-URL:</b>
 '''
 
+DEFAULT_SETTINGS = {
+    'force_utf8': False,
+    'language': 'en',
+    'language_aware_only': False,
+    'img_size': [-1, -1],
+    'qsratio': 0.9,
+    'max_per_plugins': -1,
+    'image_viewer': 'sxiv %s',
 
-class MetadataChooser:
+    'preset_artist': '',
+    'preset_album': '',
+    'preset_title': '',
+    'preset_database': None,
+    'redirects': 3,
+    'timeout':  20,
+    'parallel': 0,
+    'verbosity': 0,
+    'fuzzyness': 4,
+    'proxy': '',
+    'lang_aware_only': False,
+    'normalization': ('artist', 'album', 'title', 'moderate')
+}
+
+
+def glade_path(glade_name):
+    script_path = os.path.dirname(os.path.realpath(__file__))
+    return os.path.join(script_path, glade_name)
+
+
+class Glyromat(Gtk.Window):
     def query_data(self, *args):
         self.results = self.query.commit()
         self.query_done = True
@@ -37,7 +66,7 @@ class MetadataChooser:
         try:
             if cache.is_image:
                 template = self.create_template_image(cache)
-            elif query.get_type in ['tracklist']:
+            elif query.get_type == 'tracklist':
                 template = self.create_template_list(cache)
             else:
                 template = self.create_template_text(cache)
@@ -69,16 +98,11 @@ class MetadataChooser:
         query.number = self.adj_max.get_value()
         query.callback = self.query_callback
         query.database = self.db
-        query.verbosity = 0
         query.db_autowrite = False
 
-        query.force_utf8 = self.settings['force-utf8']
-        query.language = self.settings['language']
-        query.language_aware_only = self.settings['only-lang']
-        query.img_size = (self.settings['min-size'], self.settings['max-size'])
-
-        query.qsratio = self.settings['qsratio']
-        query.max_per_plugins = self.settings['plugmax']
+        for key, value in self.settings.items():
+            if hasattr(query, key):
+                setattr(query, key, value)
 
         self.results = []
         self.query = query
@@ -139,6 +163,7 @@ class MetadataChooser:
         ctx.fill()
 
     def toggle_search_sensivity(self, *args):
+        print('toggle')
         self.search_panel.set_sensitive(not self.search_panel.get_sensitive())
         self.combobox.set_sensitive(not self.combobox.get_sensitive())
         self.provider.set_sensitive(not self.provider.get_sensitive())
@@ -188,13 +213,35 @@ class MetadataChooser:
         self.update_entry(required, 'album')
         self.update_entry(required, 'title')
 
-    def result_set(self, widget, cache):
-        self.db.insert(self.query, cache)
-        widget.set_sensitive(False)
+    def on_result_set(self, widget, cache, button, flag):
+        self.db.replace(cache.checksum, self.query, cache)
+
+        if button:
+            widget.set_sensitive(flag)
+            button.set_sensitive(True)
+
+    def on_result_del(self, widget, cache, button, flag):
+        self.db.replace(cache.checksum, None, None)
+
+        if button:
+            widget.set_sensitive(flag)
+            button.set_sensitive(True)
+
+    def on_text_result_set(self, widget, cache, button, text_buf, flag):
+        checksum = cache.checksum
+        end_iter = text_buf.get_end_iter()
+        start_iter = text_buf.get_start_iter()
+        cache.data = bytes(text_buf.get_text(start_iter, end_iter, False), 'utf-8')
+
+        self.db.replace(checksum, self.query, cache)
+
+        if button:
+            widget.set_sensitive(flag)
+            button.set_sensitive(True)
 
     def create_template_image(self, cache):
         builder = Gtk.Builder()
-        builder.add_from_file('template_image.glade')
+        builder.add_from_file(glade_path('template_image.glade'))
         go = builder.get_object
         da = go('da')
 
@@ -211,7 +258,7 @@ class MetadataChooser:
             pixbuf.savev(path, 'png', [], [])
 
             try:
-                Popen(self.settings['image-viewer'] % path,  shell=True)
+                Popen(self.settings['image_viewer'] % path,  shell=True)
             except TypeError:
                 pass
 
@@ -230,14 +277,19 @@ class MetadataChooser:
         lb_source.set_uri(cache.source_url)
 
         btn_set = go('btn_set')
+        btn_del = go('btn_delete')
+
         btn_set.set_sensitive(not cache.is_cached)
-        btn_set.connect('clicked', self.result_set, cache)
+        btn_set.connect('clicked', self.on_result_set, cache, btn_del, False)
+
+        btn_del.set_sensitive(cache.is_cached)
+        btn_del.connect('clicked', self.on_result_del, cache, btn_set, False)
 
         return go('template_image')
 
     def create_template_text(self, cache):
         builder = Gtk.Builder()
-        builder.add_from_file('template_text.glade')
+        builder.add_from_file(glade_path('template_text.glade'))
         go = builder.get_object
 
         lb_provider = go('lb_provider')
@@ -253,14 +305,18 @@ class MetadataChooser:
         text_field.set_buffer(text_buf)
 
         btn_set = go('btn_set')
-        btn_set.set_sensitive(not cache.is_cached)
-        btn_set.connect('clicked', self.result_set, cache)
+        btn_del = go('btn_delete')
+
+        btn_set.connect('clicked', self.on_text_result_set, cache, btn_del, text_buf, True)
+
+        btn_del.set_sensitive(cache.is_cached)
+        btn_del.connect('clicked', self.on_result_del, cache, btn_set, False)
 
         return go('template_text')
 
     def create_template_list(self, cache):
         builder = Gtk.Builder()
-        builder.add_from_file('template_track.glade')
+        builder.add_from_file(glade_path('template_track.glade'))
         go = builder.get_object
 
         lb_track = go('lb_track')
@@ -279,16 +335,7 @@ class MetadataChooser:
     ###########################################################################
 
     def set_default_settings(self):
-        self.settings = {
-            'force-utf8': False,
-            'language': 'en',
-            'only-lang': False,
-            'min-size': -1,
-            'max-size': -1,
-            'qsratio': 0.9,
-            'plugmax': -1,
-            'image-viewer': 'sxiv %s'
-        }
+        self.settings = DEFAULT_SETTINGS
 
     def show_no_results_sign(self):
         def _render(widget, ctx):
@@ -328,30 +375,76 @@ class MetadataChooser:
     def set_setting(self, key, value):
         self.settings[key] = value
 
-    def __init__(self):
-        self.db = Database('/tmp')
+    def set_setting_img_size(self, index, value):
+        set.settings['img_size'][index] = value
+
+    def connect_settings(self):
+        go = self.builder.get_object
+
+        go('forceutf8_switch').set_active(self.settings['force_utf8'])
+        go('only_lang_switch').set_active(self.settings['language_aware_only'])
+        model = go('lang_combobox').get_model()
+        for index, row in enumerate(model):
+            if row[0] == self.settings['language']:
+                break
+        go('lang_combobox').set_active(index)
+        go('minsize_spin').set_value(self.settings['img_size'][0])
+        go('maxsize_spin').set_value(self.settings['img_size'][1])
+        go('image_viewer_entry').set_text(self.settings['image_viewer'])
+        go('qsratio_scale').set_value(self.settings['qsratio'])
+        go('plugmax_scale').set_value(self.settings['max_per_plugins'])
+
+        go('forceutf8_switch').connect('button-press-event',
+                lambda sw, ev: self.set_setting('force_utf8', not sw.get_active())
+        )
+        go('only_lang_switch').connect('button-press-event',
+                lambda sw, ev: self.set_setting('language_aware_only', not sw.get_active())
+        )
+        go('lang_combobox').connect('changed',
+                lambda co: self.set_setting('language', co.get_model()[co.get_active()][0])
+        )
+        go('minsize_spin').connect('changed',
+                lambda spin: self.set_setting_img_size(0, int(spin.get_value()))
+        )
+        go('maxsize_spin').connect('changed',
+                lambda spin: self.set_setting_img_size(1, int(spin.get_value()))
+        )
+        go('image_viewer_entry').connect('activate',
+                lambda ent: self.set_setting('image_viewer', ent.get_text())
+        )
+        go('qsratio_scale').connect('value-changed',
+                lambda sc: self.set_setting('qsratio', sc.get_value())
+        )
+        go('plugmax_scale').connect('value-changed',
+                lambda sc: self.set_setting('max_per_plugins', int(sc.get_value()))
+        )
+
+    def __init__(self, settings={}):
+        Gtk.Window.__init__(self)
 
         self.set_default_settings()
+        for key, value in settings.items():
+            self.settings[key] = value
+
+        if self.settings['preset_database']:
+            self.db = self.settings['preset_database']
+        else:
+            self.db = Database('/tmp')
 
         self.builder = Gtk.Builder()
-        self.builder.add_from_file('metadata-chooser.glade')
+        self.builder.add_from_file(glade_path('glyromat.glade'))
         go = self.builder.get_object
 
         self.show_no_results_sign()
 
-        self.window = go('wd_metadata_chooser')
-        self.window.connect('destroy', self.on_destroy)
+        self.add(go('b_vertical'))
 
         self.content_box = go('b_result')
 
-        self.artist = go('e_artist')
-        self.artist.set_text('DevilDriver')
-
-        self.album = go('e_album')
-        self.album.set_text('Beast')
-
-        self.title = go('e_title')
-        self.title.set_text('Dead to Rights')
+        for tag in ['artist', 'album', 'title']:
+            widget = go('e_' + tag)
+            setattr(self, tag, widget)
+            widget.set_text(self.settings['preset_' + tag])
 
         self.search_panel = go('g_search_data')
         self.search_progress = go('b_search')
@@ -371,34 +464,7 @@ class MetadataChooser:
         self.entry_title = go('e_title')
         self.adj_max = go('adj_max')
 
-        ##############
-        #  Settings  #
-        ##############
-
-        go('forceutf8_switch').connect('button-press-event',
-                lambda sw, ev: self.set_setting('force-utf8', not sw.get_active())
-        )
-        go('only_lang_switch').connect('button-press-event',
-                lambda sw, ev: self.set_setting('only-lang', not sw.get_active())
-        )
-        go('lang_combobox').connect('changed',
-                lambda co: self.set_setting('language', co.get_model()[co.get_active()][0])
-        )
-        go('minsize_spin').connect('changed',
-                lambda spin: self.set_setting('min-size', int(spin.get_value()))
-        )
-        go('maxsize_spin').connect('changed',
-                lambda spin: self.set_setting('max-size', int(spin.get_value()))
-        )
-        go('image_viewer_entry').connect('activate',
-                lambda ent: self.set_setting('image-viewer', ent.get_text())
-        )
-        go('qsratio_scale').connect('value-changed',
-                lambda sc: self.set_setting('qsratio', sc.get_value())
-        )
-        go('plugmax_scale').connect('value-changed',
-                lambda sc: self.set_setting('plugmax', int(sc.get_value()))
-        )
+        self.connect_settings()
 
         self.combobox = go('cb_metadata_type')
         metadata_types = Gtk.ListStore(str, str)
@@ -444,9 +510,4 @@ class MetadataChooser:
             self.provider.append_column(col)
 
         self.update_provider()
-        self.window.show()
-
-
-if __name__ == '__main__':
-    main = MetadataChooser()
-    Gtk.main()
+        self.toggle_search_sensivity()

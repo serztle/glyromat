@@ -117,6 +117,28 @@
       </packing>
     </child>
     <child>
+      <object class="GtkButton" id="btn_delete">
+        <property name="label" translatable="yes">Delete</property>
+        <property name="width_request">75</property>
+        <property name="visible">True</property>
+        <property name="can_focus">True</property>
+        <property name="receives_default">True</property>
+        <property name="halign">end</property>
+        <property name="valign">start</property>
+        <property name="margin_right">5</property>
+        <property name="margin_bottom">5</property>
+      </object>
+      <packing>
+        <property name="left_attach">1</property>
+        <property name="top_attach">4</property>
+        <property name="width">1</property>
+        <property name="height">1</property>
+      </packing>
+    </child>
+    <child>
+      <placeholder/>
+    </child>
+    <child>
       <placeholder/>
     </child>
   </object>
